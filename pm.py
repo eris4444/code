@@ -1,176 +1,150 @@
-import sqlite3
-from datetime import datetime
-import random
+import sys
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit, QTableWidget, QTableWidgetItem, QDialog, QFormLayout
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 
-class HotelElevatorSystem:
-    def __init__(self, db_name='hotel_elevators.db'):
-        self.conn = sqlite3.connect(db_name)
-        self.cursor = self.conn.cursor()
-        self._create_tables()
-    
-    def _create_tables(self):
-        """ایجاد جداول پایگاه داده"""
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS elevators (
-                elevator_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                current_floor INTEGER,
-                status TEXT CHECK(status IN ('فعال', 'غیرفعال', 'در حال تعمیر', 'نیاز به سرویس')),
-                last_service DATE,
-                next_service DATE,
-                service_interval INTEGER,  -- تعداد روز بین سرویس‌ها
-                capacity INTEGER,
-                manufacturer TEXT,
-                installation_date DATE
-            )
-        ''')
-        
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS maintenance_logs (
-                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                elevator_id INTEGER,
-                technician TEXT,
-                service_date DATE,
-                service_type TEXT,
-                description TEXT,
-                parts_replaced TEXT,
-                next_service_date DATE,
-                FOREIGN KEY (elevator_id) REFERENCES elevators (elevator_id)
-            )
-        ''')
-        
-        self.conn.commit()
-    
-    def add_elevator(self, name, capacity, manufacturer, installation_date, service_interval=90):
-        """اضافه کردن آسانسور جدید"""
-        self.cursor.execute('''
-            INSERT INTO elevators (name, current_floor, status, last_service, next_service, 
-                                 service_interval, capacity, manufacturer, installation_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (name, 1, 'فعال', datetime.now().date(), 
-              (datetime.now() + timedelta(days=service_interval)).date(),
-              service_interval, capacity, manufacturer, installation_date))
-        self.conn.commit()
-    
-    def log_maintenance(self, elevator_id, technician, service_type, description, parts_replaced=''):
-        """ثبت سرویس انجام شده"""
-        # دریافت اطلاعات آسانسور
-        self.cursor.execute('SELECT service_interval FROM elevators WHERE elevator_id = ?', (elevator_id,))
-        interval = self.cursor.fetchone()[0]
-        
-        service_date = datetime.now().date()
-        next_service = (datetime.now() + timedelta(days=interval)).date()
-        
-        self.cursor.execute('''
-            INSERT INTO maintenance_logs (elevator_id, technician, service_date, service_type, 
-                                        description, parts_replaced, next_service_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (elevator_id, technician, service_date, service_type, description, parts_replaced, next_service))
-        
-        # به‌روزرسانی وضعیت آسانسور
-        self.cursor.execute('''
-            UPDATE elevators 
-            SET status = 'فعال', last_service = ?, next_service = ?
-            WHERE elevator_id = ?
-        ''', (service_date, next_service, elevator_id))
-        
-        self.conn.commit()
-    
-    def report_problem(self, elevator_id, problem_description):
-        """گزارش مشکل در آسانسور"""
-        self.cursor.execute('''
-            UPDATE elevators 
-            SET status = 'نیاز به سرویس'
-            WHERE elevator_id = ?
-        ''', (elevator_id,))
-        
-        # ثبت در لاگ
-        self.cursor.execute('''
-            INSERT INTO maintenance_logs (elevator_id, service_date, description)
-            VALUES (?, ?, ?)
-        ''', (elevator_id, datetime.now().date(), f"مشکل گزارش شده: {problem_description}"))
-        
-        self.conn.commit()
-    
-    def get_elevators_due_for_service(self):
-        """دریافت لیست آسانسورهای نیازمند سرویس"""
-        self.cursor.execute('''
-            SELECT elevator_id, name, next_service 
-            FROM elevators 
-            WHERE next_service <= ? AND status != 'در حال تعمیر'
-            ORDER BY next_service ASC
-        ''', (datetime.now().date(),))
-        return self.cursor.fetchall()
-    
-    def simulate_elevator_movement(self, elevator_id, target_floor):
-        """شبیه‌سازی حرکت آسانسور"""
-        self.cursor.execute('SELECT status FROM elevators WHERE elevator_id = ?', (elevator_id,))
-        status = self.cursor.fetchone()[0]
-        
-        if status != 'فعال':
-            return False, f"آسانسور در وضعیت {status} نمی‌تواند حرکت کند"
-        
-        # شبیه‌سازی حرکت
-        time_taken = abs(target_floor - self.get_current_floor(elevator_id)) * 2  # 2 ثانیه برای هر طبقه
-        self._update_current_floor(elevator_id, target_floor)
-        
-        # 5% احتمال ایجاد مشکل
-        if random.random() < 0.05:
-            self.report_problem(elevator_id, "مشکل مکانیکی در حین حرکت")
-            return False, "آسانسور در حین حرکت دچار مشکل شد"
-        
-        return True, f"آسانسور به طبقه {target_floor} رسید. زمان حرکت: {time_taken} ثانیه"
-    
-    def _update_current_floor(self, elevator_id, floor):
-        """به‌روزرسانی طبقه فعلی آسانسور"""
-        self.cursor.execute('''
-            UPDATE elevators 
-            SET current_floor = ?
-            WHERE elevator_id = ?
-        ''', (floor, elevator_id))
-        self.conn.commit()
-    
-    def get_current_floor(self, elevator_id):
-        """دریافت طبقه فعلی آسانسور"""
-        self.cursor.execute('SELECT current_floor FROM elevators WHERE elevator_id = ?', (elevator_id,))
-        return self.cursor.fetchone()[0]
-    
-    def get_maintenance_history(self, elevator_id, limit=10):
-        """دریافت تاریخچه سرویس‌های آسانسور"""
-        self.cursor.execute('''
-            SELECT service_date, service_type, technician, description 
-            FROM maintenance_logs 
-            WHERE elevator_id = ?
-            ORDER BY service_date DESC
-            LIMIT ?
-        ''', (elevator_id, limit))
-        return self.cursor.fetchall()
-    
-    def close(self):
-        """بستن اتصال به پایگاه داده"""
-        self.conn.close()
+class ElevatorPMApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
 
-# نمونه استفاده از سیستم
-if __name__ == "__main__":
-    from datetime import timedelta
-    
-    system = HotelElevatorSystem()
-    
-    # اضافه کردن آسانسورهای نمونه
-    system.add_elevator("آسانسور شمالی", 10, "OTIS", "2020-01-15")
-    system.add_elevator("آسانسور جنوبی", 8, "Schindler", "2019-05-20")
-    
-    # شبیه‌سازی حرکت
-    success, message = system.simulate_elevator_movement(1, 5)
-    print(message)
-    
-    if not success:
-        # ثبت سرویس
-        system.log_maintenance(1, "تکنیسین احمدی", "تعمیر مکانیکی", "تعویض کابل کششی", "کابل کششی")
-    
-    # نمایش آسانسورهای نیازمند سرویس
-    print("\nآسانسورهای نیازمند سرویس:")
-    for elevator in system.get_elevators_due_for_service():
-        print(f"{elevator[1]} (کد: {elevator[0]}) - تاریخ سرویس بعدی: {elevator[2]}")
-    
-    system.close()
+        self.setWindowTitle("مدیریت آسانسور هتل")
+        self.setGeometry(200, 200, 800, 600)
+        self.setWindowIcon(QIcon("icons/elevator.png"))
+        self.central_widget = QWidget(self)
+        self.setCentralWidget(self.central_widget)
+
+        self.current_user = None
+
+        self.show_login_screen()
+
+    def show_login_screen(self):
+        self.login_screen = QWidget(self)
+        layout = QVBoxLayout()
+
+        self.username_input = QLineEdit(self)
+        self.username_input.setPlaceholderText("نام کاربری")
+        layout.addWidget(self.username_input)
+
+        self.password_input = QLineEdit(self)
+        self.password_input.setPlaceholderText("رمز عبور")
+        self.password_input.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.password_input)
+
+        login_button = QPushButton("ورود", self)
+        login_button.clicked.connect(self.authenticate)
+        layout.addWidget(login_button)
+
+        self.login_screen.setLayout(layout)
+        self.setCentralWidget(self.login_screen)
+
+    def authenticate(self):
+        username = self.username_input.text()
+        password = self.password_input.text()
+
+        # اعتبارسنجی ورود (بدون رمز برای تست)
+        if username == "admin" and password == "admin123":
+            self.current_user = username
+            self.show_dashboard()
+        else:
+            self.show_error("نام کاربری یا رمز عبور اشتباه است.")
+
+    def show_dashboard(self):
+        self.dashboard = QWidget(self)
+        layout = QVBoxLayout()
+
+        title_label = QLabel(f"خوش آمدید، {self.current_user}", self)
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
+
+        # دکمه‌ها
+        elevators_button = QPushButton("مدیریت آسانسورها", self)
+        elevators_button.clicked.connect(self.show_elevators_screen)
+        layout.addWidget(elevators_button)
+
+        pm_plans_button = QPushButton("برنامه‌های نگهداری دوره‌ای", self)
+        pm_plans_button.clicked.connect(self.show_pm_plans_screen)
+        layout.addWidget(pm_plans_button)
+
+        failures_button = QPushButton("گزارش خرابی‌ها", self)
+        failures_button.clicked.connect(self.show_failures_screen)
+        layout.addWidget(failures_button)
+
+        self.dashboard.setLayout(layout)
+        self.setCentralWidget(self.dashboard)
+
+    def show_error(self, message):
+        error_dialog = QDialog(self)
+        error_dialog.setWindowTitle("خطا")
+        error_label = QLabel(message, self)
+        layout = QVBoxLayout()
+        layout.addWidget(error_label)
+        error_dialog.setLayout(layout)
+        error_dialog.exec_()
+
+    def show_elevators_screen(self):
+        self.elevators_screen = QWidget(self)
+        layout = QVBoxLayout()
+
+        title_label = QLabel("لیست آسانسورها", self)
+        layout.addWidget(title_label)
+
+        self.elevators_table = QTableWidget(self)
+        self.elevators_table.setRowCount(3)  # نمونه داده
+        self.elevators_table.setColumnCount(3)
+        self.elevators_table.setHorizontalHeaderLabels(["آسانسور", "وضعیت", "اقدام"])
+        self.elevators_table.setItem(0, 0, QTableWidgetItem("آسانسور 1"))
+        self.elevators_table.setItem(0, 1, QTableWidgetItem("فعال"))
+        self.elevators_table.setItem(0, 2, QTableWidgetItem("نگهداری"))
+        self.elevators_table.setItem(1, 0, QTableWidgetItem("آسانسور 2"))
+        self.elevators_table.setItem(1, 1, QTableWidgetItem("خراب"))
+        self.elevators_table.setItem(1, 2, QTableWidgetItem("تعمیر"))
+
+        layout.addWidget(self.elevators_table)
+
+        self.elevators_screen.setLayout(layout)
+        self.setCentralWidget(self.elevators_screen)
+
+    def show_pm_plans_screen(self):
+        self.pm_plans_screen = QWidget(self)
+        layout = QVBoxLayout()
+
+        title_label = QLabel("برنامه‌های نگهداری دوره‌ای", self)
+        layout.addWidget(title_label)
+
+        pm_plans_table = QTableWidget(self)
+        pm_plans_table.setRowCount(3)
+        pm_plans_table.setColumnCount(3)
+        pm_plans_table.setHorizontalHeaderLabels(["برنامه", "تاریخ", "وضعیت"])
+        pm_plans_table.setItem(0, 0, QTableWidgetItem("PM 1"))
+        pm_plans_table.setItem(0, 1, QTableWidgetItem("1404/01/01"))
+        pm_plans_table.setItem(0, 2, QTableWidgetItem("انجام شده"))
+        layout.addWidget(pm_plans_table)
+
+        self.pm_plans_screen.setLayout(layout)
+        self.setCentralWidget(self.pm_plans_screen)
+
+    def show_failures_screen(self):
+        self.failures_screen = QWidget(self)
+        layout = QVBoxLayout()
+
+        title_label = QLabel("گزارش خرابی‌ها", self)
+        layout.addWidget(title_label)
+
+        failures_table = QTableWidget(self)
+        failures_table.setRowCount(3)
+        failures_table.setColumnCount(3)
+        failures_table.setHorizontalHeaderLabels(["آسانسور", "توضیحات", "وضعیت"])
+        failures_table.setItem(0, 0, QTableWidgetItem("آسانسور 1"))
+        failures_table.setItem(0, 1, QTableWidgetItem("مشکل موتور"))
+        failures_table.setItem(0, 2, QTableWidgetItem("در حال تعمیر"))
+        layout.addWidget(failures_table)
+
+        self.failures_screen.setLayout(layout)
+        self.setCentralWidget(self.failures_screen)
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = ElevatorPMApp()
+    window.show()
+    sys.exit(app.exec_())
