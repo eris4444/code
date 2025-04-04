@@ -194,12 +194,10 @@ class ElevatorPMApp(QMainWindow):
         layout.addWidget(title_label)
 
         pm_plans_table = QTableWidget(self)
-        pm_plans_table.setRowCount(3)
-        pm_plans_table.setColumnCount(3)
-        pm_plans_table.setHorizontalHeaderLabels(["برنامه", "تاریخ", "وضعیت"])
-        pm_plans_table.setItem(0, 0, QTableWidgetItem("PM 1"))
-        pm_plans_table.setItem(0, 1, QTableWidgetItem("1404/01/01"))
-        pm_plans_table.setItem(0, 2, QTableWidgetItem("انجام شده"))
+        pm_plans_table.setRowCount(5)  # تعداد ردیف‌ها برای نمونه
+        pm_plans_table.setColumnCount(4)  # نام آسانسور، تاریخ برنامه، وضعیت، اقدامات
+        pm_plans_table.setHorizontalHeaderLabels(["آسانسور", "تاریخ برنامه", "وضعیت", "اقدامات"])
+
         layout.addWidget(pm_plans_table)
 
         pm_plans_screen.setLayout(layout)
@@ -218,20 +216,13 @@ class ElevatorPMApp(QMainWindow):
         title_label.setStyleSheet("font-size: 20px; margin: 20px; color: #333;")
         layout.addWidget(title_label)
 
-        failures_table = QTableWidget(self)
-        failures_table.setRowCount(3)
-        failures_table.setColumnCount(3)
-        failures_table.setHorizontalHeaderLabels(["آسانسور", "توضیحات", "وضعیت"])
-        failures_table.setItem(0, 0, QTableWidgetItem("آسانسور 1"))
-        failures_table.setItem(0, 1, QTableWidgetItem("مشکل موتور"))
-        failures_table.setItem(0, 2, QTableWidgetItem("در حال تعمیر"))
-        layout.addWidget(failures_table)
+        layout.addWidget(QLabel("خرابی‌ها در اینجا نمایش داده می‌شوند"))
 
         failures_screen.setLayout(layout)
         self.central_widget.addWidget(failures_screen)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ElevatorPMApp()
     window.show()
