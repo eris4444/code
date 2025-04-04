@@ -16,6 +16,7 @@ class AdvancedCalculator(QMainWindow):
         self.result = ""
         self.history = []
         self.dark_mode = False
+        self.parentheses_count = 0
         
         # ایجاد رابط کاربری
         self.init_ui()
@@ -43,7 +44,11 @@ class AdvancedCalculator(QMainWindow):
         self.display = QLineEdit()
         self.display.setAlignment(Qt.AlignRight)
         self.display.setReadOnly(True)
-        self.display.setStyleSheet("font-size: 32px; border: none;")
+        self.display.setStyleSheet("""
+            font-size: 32px; 
+            border: none;
+            background: transparent;
+        """)
         self.display.setMinimumHeight(80)
         main_layout.addWidget(self.display)
         
@@ -155,7 +160,6 @@ class AdvancedCalculator(QMainWindow):
         return btn
     
     def darken_color(self, color):
-        # کاهش روشنایی رنگ برای حالت فشرده
         if color.startswith("#"):
             r = int(color[1:3], 16)
             g = int(color[3:5], 16)
@@ -176,9 +180,16 @@ class AdvancedCalculator(QMainWindow):
             palette.setColor(QPalette.WindowText, Qt.white)
             palette.setColor(QPalette.Base, QColor(25, 25, 25))
             palette.setColor(QPalette.Text, Qt.white)
+            palette.setColor(QPalette.ButtonText, Qt.white)
             self.setPalette(palette)
             self.theme_btn.setText("🌙")
-            self.display.setStyleSheet("font-size: 32px; border: none; color: white;")
+            self.display.setStyleSheet("""
+                font-size: 32px; 
+                border: none;
+                color: white;
+                background: transparent;
+            """)
+            self.history_label.setStyleSheet("color: #aaa; font-size: 14px;")
         else:
             # تم روشن
             palette = QPalette()
@@ -186,9 +197,16 @@ class AdvancedCalculator(QMainWindow):
             palette.setColor(QPalette.WindowText, Qt.black)
             palette.setColor(QPalette.Base, QColor(255, 255, 255))
             palette.setColor(QPalette.Text, Qt.black)
+            palette.setColor(QPalette.ButtonText, Qt.black)
             self.setPalette(palette)
             self.theme_btn.setText("☀️")
-            self.display.setStyleSheet("font-size: 32px; border: none; color: black;")
+            self.display.setStyleSheet("""
+                font-size: 32px; 
+                border: none;
+                color: black;
+                background: transparent;
+            """)
+            self.history_label.setStyleSheet("color: #888; font-size: 14px;")
     
     def append_number(self, number):
         self.current_input += number
@@ -198,54 +216,92 @@ class AdvancedCalculator(QMainWindow):
         if self.current_input and self.current_input[-1] not in "+-*/^":
             self.current_input += operator
             self.update_display()
+        elif operator == "-" and (not self.current_input or self.current_input[-1] in "+-*/^"):
+            # اجازه دادن به اعداد منفی
+            self.current_input += operator
+            self.update_display()
     
     def append_function(self, func):
         self.current_input += func
+        self.parentheses_count += 1
         self.update_display()
     
     def append_factorial(self):
-        if self.current_input and self.current_input[-1].isdigit():
+        if self.current_input and (self.current_input[-1].isdigit() or self.current_input[-1] == ')'):
             self.current_input += "!"
             self.update_display()
     
     def toggle_parentheses(self):
-        if "(" not in self.current_input or self.current_input.count("(") <= self.current_input.count(")"):
+        if "(" not in self.current_input or self.parentheses_count <= 0:
             self.current_input += "("
+            self.parentheses_count += 1
         else:
             self.current_input += ")"
+            self.parentheses_count -= 1
         self.update_display()
     
     def clear(self):
         self.current_input = ""
         self.result = ""
+        self.parentheses_count = 0
         self.update_display()
         self.history_label.setText("")
     
     def backspace(self):
+        if not self.current_input:
+            return
+        
+        # مدیریت پرانتزها
+        if self.current_input[-1] == "(":
+            self.parentheses_count -= 1
+        elif self.current_input[-1] == ")":
+            self.parentheses_count += 1
+        
         self.current_input = self.current_input[:-1]
         self.update_display()
     
     def update_display(self):
         self.display.setText(self.current_input)
+        self.display.setFocus()
     
     def calculate(self):
         if not self.current_input:
             return
         
         try:
+            # بستن پرانتزهای باز
+            while self.parentheses_count > 0:
+                self.current_input += ")"
+                self.parentheses_count -= 1
+            
             # جایگزینی نمادهای ریاضی برای ارزیابی
-            expr = self.current_input.replace("^", "**").replace("÷", "/").replace("×", "*")
+            expr = self.current_input
+            expr = expr.replace("^", "**").replace("÷", "/").replace("×", "*")
             
             # جایگزینی فاکتوریل
-            while "!" in expr:
-                i = expr.index("!")
-                j = i - 1
-                while j >= 0 and (expr[j].isdigit() or expr[j] == '.'):
-                    j -= 1
-                num = expr[j+1:i]
-                if '.' in num:
-                    raise ValueError("Factorial of non-integer")
-                expr = expr[:j+1] + f"factorial({int(num)})" + expr[i+1:]
+            i = 0
+            while i < len(expr):
+                if expr[i] == "!":
+                    j = i - 1
+                    while j >= 0 and (expr[j].isdigit() or expr[j] == ')'):
+                        if expr[j] == ')':
+                            # پیدا کردن پرانتز باز مربوطه
+                            balance = 1
+                            k = j - 1
+                            while k >= 0 and balance > 0:
+                                if expr[k] == ')':
+                                    balance += 1
+                                elif expr[k] == '(':
+                                    balance -= 1
+                                k -= 1
+                            j = k
+                            break
+                        j -= 1
+                    
+                    num_expr = expr[j+1:i]
+                    expr = expr[:j+1] + f"factorial({num_expr})" + expr[i+1:]
+                    i = j + len(f"factorial({num_expr})")
+                i += 1
             
             # ارزیابی عبارت
             result = eval(expr, {
@@ -260,21 +316,30 @@ class AdvancedCalculator(QMainWindow):
                 'factorial': factorial
             })
             
+            # نمایش نتیجه
             self.result = str(result)
+            if '.' in self.result:
+                self.result = self.result.rstrip('0').rstrip('.') if '.' in self.result else self.result
+            
             self.history.append(f"{self.current_input} = {self.result}")
             self.history_label.setText(self.history[-1] if len(self.history) <= 1 else "... " + self.history[-1])
             self.current_input = self.result
             self.update_display()
         
+        except ZeroDivisionError:
+            self.display.setText("خطا: تقسیم بر صفر")
+            self.current_input = ""
+        except ValueError as ve:
+            self.display.setText(f"خطا: {str(ve)}")
+            self.current_input = ""
         except Exception as e:
-            self.display.setText("Error")
+            self.display.setText("خطا در محاسبه")
             self.current_input = ""
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setStyle('Fusion')  # سبک مدرن برای ویجت‌ها
+    app.setStyle('Fusion')
     
-    # فونت پیش‌فرض برای پشتیبانی از نمادها
     font = QFont()
     font.setFamily("Segoe UI")
     font.setPointSize(10)
