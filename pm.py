@@ -3,9 +3,9 @@ import sqlite3
 from datetime import datetime, timedelta
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
-                             QComboBox, QDateEdit, QTextEdit, QMessageBox, QTabWidget)
+                             QComboBox, QDateEdit, QTextEdit, QMessageBox, QTabWidget, QInputDialog)
 from PyQt5.QtCore import Qt, QDate
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QFont, QIcon, QIntValidator
 
 class HotelElevatorSystem(QMainWindow):
     def __init__(self):
